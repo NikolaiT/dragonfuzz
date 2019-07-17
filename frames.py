@@ -6,7 +6,7 @@ def mac2str(mac):
     return bytes.fromhex(mac.replace(':', ' '))
 
 
-def get_sae_frame(sta_mac, ap_mac, sequence=b"\x01\x00", status=b"\x00\x00", offset=''):
+def get_sae_frame(sta_mac, ap_mac, sequence=b"\x01\x00", status=b"\x00\x00", offset='', type='commit'):
     """
     Setup a SAE frame
 
@@ -18,7 +18,11 @@ def get_sae_frame(sta_mac, ap_mac, sequence=b"\x01\x00", status=b"\x00\x00", off
 
     :return: the setup frame
     """
-    frame = bytearray(AUTH_REQ_SAE)
+
+    if type == 'commit':
+        frame = bytearray(AUTH_REQ_SAE)
+    elif type == 'confirm':
+        frame = bytearray(SAE_CONFIRM)
 
     # add mac addresses
     sta_mac_bytes = mac2str(sta_mac)
@@ -28,13 +32,20 @@ def get_sae_frame(sta_mac, ap_mac, sequence=b"\x01\x00", status=b"\x00\x00", off
     frame[10:16] = sta_mac_bytes
     frame[16:22] = ap_mac_bytes
 
-    frame[26:28] = sequence
+    if type == 'commit':
+        frame[26:28] = sequence
+    elif type == 'confirm':
+        frame[26:28] = b'\x02\x00'
+
     frame[28:30] = status
 
-    if offset == 'sae_body':
-        frame = frame[:-98]
-    elif offset == 'mgmt_body':
-        frame = frame[:-104]
+    if type == 'commit':
+        if offset == 'sae_body':
+            frame = frame[:-98]
+        elif offset == 'mgmt_body':
+            frame = frame[:-104]
+    elif type == 'confirm':
+        frame = frame[:-34]
 
     frame = DEFAULT_RADIOTAP_HEADER + frame
 
@@ -87,6 +98,8 @@ AUTH_REQ_OPEN      += b"\x00\x00"        # Authentication status
 AUTH_REQ_HDR        = AUTH_REQ_OPEN[:-6]
 
 
+CONFIRM_TOKEN = b"\x34\x58\xEE\x8C\xB7\x00\x31\xA2\x44\xBD\x3A\xA5\x02\xDD\x5C\x5E\xE3\xEB\xFF\x05\x46\x59\xF6\x19\xFF\x0D\x97\x4A\xC6\x03\xFC\x11"
+
 SAE_SCALAR = b"\xFA\x58\xEE\x8C\xB7\x00\x31\xA2\x79\xBD\x3A\xA5\x02\xDD\x5C\x5E\xE3\xEB\xDA\x05\x46\x59\xF6\x19\xFF\x0D\x97\x4A\xC6\x03\xFC\x11"
 SAE_X = b"\x9E\xF3\x26\x31\x73\xFB\xDF\x60\x01\xB1\x75\xE7\x88\x32\x1E\x2C\x64\x22\x91\x20\xEA\x16\x05\x30\x94\xDB\x41\xB5\xF1\xA5\x8D\x22"
 SAE_Y = b"\x5E\x25\x31\x49\x18\x71\xD3\x17\x89\x98\x3F\x29\x7E\x56\x35\x1F\x42\x58\x5F\x8E\x34\x1C\xB3\xFE\x17\x71\x29\x4B\x20\xAD\x32\xEB"
@@ -111,6 +124,22 @@ AUTH_REQ_HDR_SAE = AUTH_REQ_SAE[:-98]
 
 # pointer to the beginning of the mgmt authentication body
 AUTH_REQ_BODY_MGMT = AUTH_REQ_SAE[:-104]
+
+
+SAE_CONFIRM      = b"\xB0"            # Type/Subtype
+SAE_CONFIRM      += b"\x00"            # Flags
+SAE_CONFIRM      += b"\x00\x00"        # Duration ID
+SAE_CONFIRM      += b"\x00\x00\x00\x00\x00\x00"   # Destination address
+SAE_CONFIRM      += b"\x00\x00\x00\x00\x00\x00"  # Source address
+SAE_CONFIRM      += b"\x00\x00\x00\x00\x00\x00"   # BSSID
+SAE_CONFIRM      += b"\x20\x00"        # Sequence control, last 4 bits are fragment number, first 16 bits are sequence number
+
+SAE_CONFIRM      += b"\x03\x00"        # Authentication algorithm (SAE)
+SAE_CONFIRM      += b"\x02\x00"        # Authentication sequence number
+SAE_CONFIRM      += b"\x00\x00"        # Authentication status
+SAE_CONFIRM      += b"\xff\xff"        # send confirm
+SAE_CONFIRM      += CONFIRM_TOKEN   # confirm token
+
 
 DEAUTH              = b"\xC0"            # Type/Subtype
 DEAUTH             += b"\x00"            # Flags

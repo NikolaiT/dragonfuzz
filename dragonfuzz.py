@@ -12,9 +12,6 @@ from scapy.all import *
 from frames import *
 
 
-logging.basicConfig(level=logging.DEBUG)
-
-
 def monitor_mode(dev):
     """
     puts a card in monitor mode
@@ -155,6 +152,24 @@ def fuzz(args):
 
     sae_body = get_sae_frame(args.sta_mac, args.ap_mac, offset='sae_body')
     mgmt_body = get_sae_frame(args.sta_mac, args.ap_mac, offset='mgmt_body')
+    sae_full = get_sae_frame(args.sta_mac, args.ap_mac)
+    sae_confirm = get_sae_frame(args.sta_mac, args.ap_mac, type='confirm', offset='sae_body')
+
+    s_initialize('auth-commit: valid')
+    s_static(sae_full)
+
+    s_initialize('auth-confirm: valid')
+    s_static(sae_confirm)
+    s_word(0xffff, fuzzable=True)
+    s_random(CONFIRM_TOKEN, min_length=32, max_length=100, fuzzable=True)
+
+    s_initialize('auth-commit valid payload garbage in the end')
+    s_static(sae_body)
+    s_word(0x0013, fuzzable=False)
+    s_static(SAE_SCALAR)
+    s_static(SAE_X)
+    s_static(SAE_Y)
+    s_random(b'', min_length=0, max_length=3000, fuzzable=True)
 
     s_initialize('auth-commit fuzz invalid group')
     s_static(sae_body)
@@ -163,11 +178,29 @@ def fuzz(args):
     s_static(SAE_X)
     s_static(SAE_Y)
 
+    s_initialize('auth-commit invalid status codes')
+    s_static(mgmt_body)
+    s_word(0x0003, fuzzable=False) # SAE auth algo
+    s_word(0x0001, fuzzable=False) # sequence 1, the commit step
+    s_byte(0x00, fuzzable=True) # first byte of status code
+    s_byte(0x00, fuzzable=False) # second byte of status code. dont fuzz
+    s_static(SAE_SCALAR)
+    s_static(SAE_X)
+    s_static(SAE_Y)
+
+    s_initialize('auth-confirm invalid confirm payload')
+    s_static(mgmt_body)
+    s_word(0x0003, fuzzable=False) # SAE auth algo
+    s_word(0x0002, fuzzable=False) # sequence 2, the confirm step
+    s_word(0x0, fuzzable=False) # success
+    s_word(0xffff,  fuzzable=True) # the send confirm word
+    s_random(b'', min_length=0, max_length=500, fuzzable=True) # fuzz the confirm data
+
     s_initialize('auth-commit fuzz status codes')
     s_static(mgmt_body)
     s_word(0x0003, fuzzable=False) # SAE auth algo
     s_word(0x0001, fuzzable=False) # sequence 1
-    s_word(0x0, fuzzable=True) # MMPDU_STATUS_CODE_ANTI_CLOGGING_TOKEN_REQ = 76
+    s_word(0x0, fuzzable=True) # fuzz status codes
     # now the body expects to have a anti-clogging token set
     s_random(b'', min_length=0, max_length=500, fuzzable=True)
 
@@ -179,10 +212,19 @@ def fuzz(args):
     # now the body expects to have a anti-clogging token set
     s_random(b'', min_length=0, max_length=100, fuzzable=True)
 
-    req = s_get('auth-commit fuzz status codes')
-    logging.info(f'Num mutations: {req.num_mutations()}')
-    session.connect(req)
+    session.connect(s_get('auth-commit: valid'))
+    session.connect(s_get('auth-commit: valid'), s_get('auth-confirm: valid'), callback=check_auth)
     session.fuzz()
+
+
+def check_auth(target, fuzz_data_logger, session, node, edge, *args, **kwargs):
+    try:
+        response = target.recv(1024)
+    except Exception as e:
+        logging.exception("Unable to connect. Target is down. Exiting.")
+        exit(1)
+
+    logging.info('got response')
 
 
 def main():
@@ -207,7 +249,11 @@ def main():
     if not args.ap_mac:
         parser.error('AP MAC address must be set')
 
-    logging.info(os.getuid())
+    if not os.getuid() == 0:
+        parser.error('must be root to start fuzzing')
+
+    logging.basicConfig(level=logging.INFO)
+
     if args.setup:
         monitor_mode(args.iface)
         set_channel(args.iface, 1)

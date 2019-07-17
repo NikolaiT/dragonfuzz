@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "4906b7f33801f23451c46576d81cc986abecfab97f8e8df5a32e9de3069f2bf5"
+            "sha256": "fef1f7c0e50ffe30b30b70af5c64d87ac9adf7eb42c1159db8ad29dde4ebece7"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -19,6 +19,13 @@
         "boofuzz": {
             "git": "https://github.com/jtpereyda/boofuzz",
             "ref": "bb4fa6955895c54eb56ac62e98bc47fd5f28bc8a"
+        },
+        "scapy": {
+            "hashes": [
+                "sha256:1baa048936207ceb1a4281a0e1e3b4317667c754872a0bb4734c5213c468e86a"
+            ],
+            "index": "pypi",
+            "version": "==2.4.2"
         }
     },
     "develop": {}

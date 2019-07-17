@@ -7,6 +7,7 @@ verify_ssl = true
 
 [packages]
 boofuzz = {git = "https://github.com/jtpereyda/boofuzz"}
+scapy = "*"
 
 [requires]
 python_version = "3.7"
