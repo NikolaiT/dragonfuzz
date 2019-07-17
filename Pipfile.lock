@@ -1,0 +1,25 @@
+{
+    "_meta": {
+        "hash": {
+            "sha256": "4906b7f33801f23451c46576d81cc986abecfab97f8e8df5a32e9de3069f2bf5"
+        },
+        "pipfile-spec": 6,
+        "requires": {
+            "python_version": "3.7"
+        },
+        "sources": [
+            {
+                "name": "pypi",
+                "url": "https://pypi.org/simple",
+                "verify_ssl": true
+            }
+        ]
+    },
+    "default": {
+        "boofuzz": {
+            "git": "https://github.com/jtpereyda/boofuzz",
+            "ref": "bb4fa6955895c54eb56ac62e98bc47fd5f28bc8a"
+        }
+    },
+    "develop": {}
+}

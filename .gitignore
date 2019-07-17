@@ -1,0 +1,14 @@
+*.pyc
+archived_fuzzies/*.session
+docs/_build/
+build/
+dist/
+*.egg-info/
+.idea/
+testing/
+.cache
+.tox
+boofuzz-results/
+
+wifuzzit/
+captures/
