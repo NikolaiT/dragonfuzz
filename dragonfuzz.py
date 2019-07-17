@@ -157,6 +157,7 @@ def fuzz(args):
 
     s_initialize('auth-commit: valid')
     s_static(sae_full)
+    s_byte(0xab, fuzzable=True)
 
     s_initialize('auth-confirm: valid')
     s_static(sae_confirm)
@@ -212,19 +213,23 @@ def fuzz(args):
     # now the body expects to have a anti-clogging token set
     s_random(b'', min_length=0, max_length=100, fuzzable=True)
 
-    session.connect(s_get('auth-commit: valid'))
-    session.connect(s_get('auth-commit: valid'), s_get('auth-confirm: valid'), callback=check_auth)
+    # learn about callbacks: https://zeroaptitude.com/zerodetail/fuzzing-with-boofuzz/
+
+    session.connect(s_get('auth-commit: valid'), callback=check_auth)
+    #session.connect(s_get('auth-commit: valid'), s_get('auth-confirm: valid'), callback=check_auth)
     session.fuzz()
 
 
 def check_auth(target, fuzz_data_logger, session, node, edge, *args, **kwargs):
-    try:
-        response = target.recv(1024)
-    except Exception as e:
-        logging.exception("Unable to connect. Target is down. Exiting.")
-        exit(1)
+    def anti_clogging_token_response(pkt):
+        return (len(pkt) >= 30 and pkt[0] == "\xB0"
+                and pkt[28:30] == b"\x4c\x00")
 
-    logging.info('got response')
+    pkt = target.recv(1024)
+    logging.info(f'Got {len(pkt)} bytes')
+    if anti_clogging_token_response(pkt):
+        logging.info('got anti clogging token response')
+        logging.info(pkt[32:])
 
 
 def main():
