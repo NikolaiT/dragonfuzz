@@ -12,3 +12,4 @@ boofuzz-results/
 
 wifuzzit/
 captures/
+*.log
