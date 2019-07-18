@@ -33,11 +33,25 @@ def set_channel(dev, channel=1):
     os.system(f'iwconfig {dev} channel {channel}')
 
 
-def enable_hardware_sim():
-    """
-    setup hardware sim environment
-    :return:
-    """
+def check_frame_type(pkt):
+    if pkt[0:1] == b"\xb0":
+        logging.info('received auth response')
+        return 'auth'
+    elif pkt[0:1] == b'\x40':
+        logging.info('received probe request')
+        return 'probe request'
+    elif pkt[0:1] == b'\x50':
+        logging.info('received probe response')
+        return 'probe response'
+    elif pkt[0:1] == b'\x00':
+        logging.info('received assoc request')
+        return 'assoc request'
+    elif pkt[0:1] == b'\x00':
+        logging.info('received assoc response')
+        return 'assoc response'
+    elif pkt[0:1] == b'\x80':
+        logging.info('received beacon frame')
+        return 'beacon'
 
 
 def is_alive(dev):
@@ -71,18 +85,7 @@ def is_alive(dev):
         pkt = pkt[header_length:]
 
         resp = False
-        if pkt[0:1] == b"\xb0":
-            logging.info('received auth response')
-        elif pkt[0:1] == b'\x40':
-            logging.info('received probe request')
-        elif pkt[0:1] == b'\x50':
-            logging.info('received probe response')
-        elif pkt[0:1] == b'\x00':
-            logging.info('received assoc request')
-        elif pkt[0:1] == b'\x00':
-            logging.info('received assoc response')
-        elif pkt[0:1] == b'\x80':
-            logging.info('received beacon frame')
+        check_frame_type(pkt)
 
         if (len(pkt) >= 30 and pkt[0:1] == b"\xb0"
                 and pkt[4:10] == frames.mac2str(AP_MAC)
@@ -138,15 +141,18 @@ def send_auth_scapy(iface, ap_mac, sta_mac):
 def fuzz(args):
     connection = SocketConnection(
         host=args.iface,
-        proto='raw-l2',
+        proto='wifi',
         ethernet_proto=socket.htons(ETH_P_ALL),
         send_timeout=5.0,
         recv_timeout=5.0
     )
 
+    connection.wifi_dev = args.iface
+
     target = Target(connection=connection)
 
     session = Session(
+        sleep_time=0.1,
         target=target
     )
 
@@ -214,22 +220,35 @@ def fuzz(args):
     s_random(b'', min_length=0, max_length=100, fuzzable=True)
 
     # learn about callbacks: https://zeroaptitude.com/zerodetail/fuzzing-with-boofuzz/
+    # read this: https://pen-testing.sans.org/blog/2011/12/05/fuzzing-in-a-penetration-test/
 
     session.connect(s_get('auth-commit: valid'), callback=check_auth)
-    #session.connect(s_get('auth-commit: valid'), s_get('auth-confirm: valid'), callback=check_auth)
+    session.connect(s_get('auth-commit: valid'), s_get('auth-confirm: valid'), callback=check_auth)
     session.fuzz()
 
 
-def check_auth(target, fuzz_data_logger, session, node, edge, *args, **kwargs):
+def check_auth(target, fuzz_data_logger, session, *args, **kwargs):
+    # logging.info('last_send: {}'.format(session.last_send))
+    # logging.info('last_recv: {}'.format(session.last_recv))
+
     def anti_clogging_token_response(pkt):
-        return (len(pkt) >= 30 and pkt[0] == "\xB0"
+        header_length = struct.unpack('h', pkt[2:4])[0]
+        pkt = pkt[header_length:]
+
+        if check_frame_type(pkt) == 'auth':
+            logging.info(pkt)
+
+        return (len(pkt) >= 30 and pkt[0:1] == b"\xb0"
                 and pkt[28:30] == b"\x4c\x00")
 
-    pkt = target.recv(1024)
-    logging.info(f'Got {len(pkt)} bytes')
-    if anti_clogging_token_response(pkt):
-        logging.info('got anti clogging token response')
-        logging.info(pkt[32:])
+    for pkt in (session.last_recv, target.recv(1024)):
+        if pkt:
+            ans = anti_clogging_token_response(pkt)
+            logging.info(f'got {len(pkt)} bytes')
+            if ans:
+                logging.info('got anti clogging token response')
+                logging.info(pkt[32:])
+                return
 
 
 def main():
@@ -243,7 +262,7 @@ def main():
     parser.add_argument('--ap-mac', dest='ap_mac', help='AP MAC address (fuzzed)')
     parser.add_argument('--iface', dest='iface', default='wlan0', help='injection interface')
     parser.add_argument('--log_level', dest='log_level', type=int, default=3)
-    parser.add_argument('-s', dest='setup', type=bool, default=False)
+    parser.add_argument('--setup', '-s', dest='setup', action='store_true', default=False)
 
     args = parser.parse_args()
 
